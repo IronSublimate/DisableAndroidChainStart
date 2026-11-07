@@ -101,20 +101,49 @@ system_server（Xposed 注入）
 pwsh -File chain_start_fix\build.ps1
 ```
 
-流程：`javac`(JDK11) → `jar` → `d8`(build-tools 33) → `7z` 注入 `classes2.dex` + 改写 `assets/xposed_init`
+流程：`javac` → `jar` → `d8`(build-tools) → 注入 `classes2.dex` + 改写 `assets/xposed_init`
 → `zipalign` → `apksigner`（首次运行自动生成 `asmfix.keystore`，口令 `android`）。
 
-依赖路径在脚本顶部集中定义，可自行改：
+**依赖全部自动探测，不需要改脚本**。优先级：
 
-| 变量 | 默认值 |
-|---|---|
-| `$jdk` | `C:\Program Files\Java\jdk-11.0.11` |
-| `$bt` | `D:\Android\SDK\build-tools\33.0.1` |
-| `$androidJar` | `D:\Android\SDK\platforms\android-32\android.jar` |
-| `$sevenZip` | `C:\ProgramData\chocolatey\bin\7z.exe` |
+| 依赖 | 1. 参数 | 2. 环境变量 | 3. 其它探测位置 |
+|---|---|---|---|
+| JDK（≥8，建议 ≥11） | `-Jdk <目录>` | `JAVA_HOME` | `%ProgramFiles%\Java\jdk*`、Adoptium/Corretto/Zulu/Liberica、Android Studio 的 `jbr`、JetBrains Toolbox `jbr`、PATH 里的 `javac`。多个候选时**取版本最高** |
+| Android SDK | `-Sdk <目录>` | `ANDROID_HOME`、`ANDROID_SDK_ROOT` | `local.properties` 的 `sdk.dir`、`%LOCALAPPDATA%\Android\Sdk`、`%ProgramFiles%\Android\Sdk`、`D:\Android\SDK` 等。多个时取第 1 个并**打印全部候选** |
+| build-tools | 自动 | — | SDK 下含 `zipalign.exe` + `lib\d8.jar` + `lib\apksigner.jar` 的**最高版本** |
+| `android.jar` | `-AndroidJar <路径>` | — | SDK `platforms` 里 `android-≥29` 的**最高版本** |
+| 7-Zip | `-SevenZip <路径>` | `SEVENZIP` | PATH 的 `7z/7za`、`%ProgramFiles%\7-Zip`、chocolatey。**找不到就用 .NET 内置 zip 兜底**（会校验 `resources.arsc` 保持未压缩） |
+| adb（仅 verify.ps1） | `-Adb <路径>` | `ANDROID_HOME` / `ANDROID_SDK_ROOT` / `ADB` | SDK 的 `platform-tools`、PATH |
 
-> 注意：`build-tools/d8.bat`、`apksigner.bat` 里用的是 `-Djava.ext.dirs`（JDK8 语法，JDK11 已删除），
-> 所以脚本直接 `java -cp lib/d8.jar com.android.tools.r8.D8` 和 `java -cp lib/apksigner.jar com.android.apksigner.ApkSignerTool`。
+构建开始时脚本会先把解析结果打印出来（`[...env]` 开头的行），出问题一眼能看出用的是哪套工具：
+
+```
+=== 0/8 环境探测 ===
+[env] JDK          : C:\Program Files\Java\jdk-11.0.11  (javac 11.0.11)
+[env] Android SDK  : D:\Android\SDK
+[env] build-tools  : D:\Android\SDK\build-tools\33.0.1  (v33.0.1)
+[env] android.jar  : D:\Android\SDK\platforms\android-32\android.jar
+[env] 7-Zip        : C:\ProgramData\chocolatey\bin\7z.exe
+[env] adb          : D:\Android\SDK\platform-tools\adb.exe
+```
+
+常用覆盖示例：
+
+```powershell
+# 指定整套工具链（可复现构建）
+pwsh -File build.ps1 -Jdk "C:\Program Files\Java\jdk-11.0.11" -Sdk "D:\Android\SDK"
+
+# 换用别的 android.jar / 7-Zip
+pwsh -File build.ps1 -AndroidJar "D:\Android\SDK\platforms\android-33\android.jar" -SevenZip "C:\Program Files\7-Zip\7z.exe"
+
+# 强制走 .NET 内置 zip（验证"没有 7-Zip"的场景）
+pwsh -File build.ps1 -ForceDotNetZip
+```
+
+> 注意：`build-tools/d8.bat`、`apksigner.bat` 里用的是 `-Djava.ext.dirs`（JDK8 语法，JDK9+ 已删除），
+> 所以脚本绕开 .bat，直接 `java -cp lib/d8.jar com.android.tools.r8.D8` 与
+> `java -cp lib/apksigner.jar com.android.apksigner.ApkSignerTool`。
+> 已在 JDK 8 / 11 / 21 + build-tools 33.0.1 / 36.0.0 + android-32 / android-36 上验证通过。
 
 ## 4. 安装与启用（关键步骤）
 
@@ -142,6 +171,7 @@ pwsh -File chain_start_fix\verify.ps1
 ```
 
 会打印 `fix_diag.txt` 里的兼容性清单与安装/推送状态，并顺带抓 LSPosed 日志里的 `ASM-FIX` 行。
+adb 路径同样自动探测（`-Adb` > `ANDROID_HOME`/`ANDROID_SDK_ROOT`/`ADB` > PATH > 常见 SDK 目录），多设备时用 `-Serial <序列号>` 指定。
 
 `fix_diag.txt` 每行的含义：
 
