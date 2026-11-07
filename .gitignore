@@ -1,0 +1,24 @@
+# ---------- 构建产物 ----------
+/build/
+*.apk
+*.idsig
+*.dex
+*.jar
+
+# ---------- 签名私钥（重要）----------
+# 不要提交。asmfix.keystore 是本地自签名私钥：
+#   1) 换签名 → 已安装的旧版无法覆盖安装，必须卸载重装；
+#   2) 卸载会触发原模块的"卸载自清理"，删除 /data/misc/xposed_configs/aslm/ 下的规则；
+#   3) 卸载还会重置 LSPosed 里的 enabled/scope 配置。
+# 请把它离线备份到仓库之外，保持签名稳定。
+/asmfix.keystore
+
+# ---------- IDE / 系统 ----------
+.idea/
+*.iml
+.gradle/
+local.properties
+*.user
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,0 +1,6 @@
+# 统一换行，避免 Windows 下 CRLF 反复改动
+* text=auto
+*.ps1 text eol=crlf
+*.java text eol=lf
+*.md text eol=lf
+*.png binary
